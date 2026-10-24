@@ -2,6 +2,8 @@ import express from "express";
 import connectDB from "./DB/connectDB.js";
 import userRouter from "./modules/user/user.controller.js";
 import cors from "cors"
+import { connectRedis } from "./DB/connectRedis.js";
+import messageRouter from "./modules/message/message.controller.js";
 const app = express();
 const port = 3000;
 const bootstrap = async (req, res, next) => {
@@ -9,7 +11,9 @@ const bootstrap = async (req, res, next) => {
     app.use(cors());
     app.use(express.json());
     await connectDB();
+    await connectRedis();
     app.use("/users", userRouter);
+    app.use("/messages", messageRouter);
     app.use("{/*demo}", (req, res, next) => {
         throw new Error(
             `Url ${req.originalUrl}with method ${req.method}not found`,

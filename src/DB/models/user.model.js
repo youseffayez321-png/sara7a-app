@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+    userGender,
+    userProvider,
+    userRole,
+} from "../../common/enum/user.enum.js";
 
 const userSchema = new mongoose.Schema(
     {
@@ -25,41 +30,45 @@ const userSchema = new mongoose.Schema(
         },
         password: {
             type: String,
-            required: function(){
-                if(this.provider=="system"){
-                    return true
+            required: function () {
+                if (this.provider == userProvider.system) {
+                    return true;
                 }
-                return false
+                return false;
             },
             trim: true,
         },
-        profileImage:String,
+        profileImage: String,
+        coverImage: [String],
         phone: String,
         gender: {
             type: String,
-            enum: ["male", "female"],
-            default: "male",
+            enum: Object.values(userGender),
+            default: userGender.male,
         },
         age: {
             type: Number,
-            required: function(){
-                if(this.provider=="system"){
-                    return true
+            required: function () {
+                if (this.provider == userProvider.system) {
+                    return true;
                 }
-                return false
+                return false;
             },
             min: 20,
             max: 60,
         },
+        roles: {
+            type: String,
+            enum: Object.values(userRole),
+            default: userRole.user,
+        },
         provider: {
             type: String,
-            enum: ["system", "google"],
-            default: "system",
+            enum: Object.values(userProvider),
+            default: userProvider.system,
         },
-        isConfirmed: {
-            type: Boolean,
-            default: false,
-        },
+        isConfirmed: Boolean,
+        changeCredentialAt: Date,
     },
     {
         timestamps: true,
