@@ -1,16 +1,17 @@
 import nodemailer from "nodemailer";
 import { randomInt } from "node:crypto";
+import { EMAIL, PASSWORD } from "../../../config/config.service.js";
 export const sendEmail = async ({ to, subject, html, attachments }) => {
     const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
-            user: "youseffayez321@gmail.com",
-            pass: "pfomwilhnsoeueof",
+            user: EMAIL,
+            pass: PASSWORD,
         },
     });
 
     const info = await transporter.sendMail({
-        from: '"EL JO" <youseffayez321@gmail.com>',
+        from: `"EL JO" <${EMAIL}>`,
         to,
         subject,
         html: html || "",

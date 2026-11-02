@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
+import { DB_URL } from "../../config/config.service.js";
 
 const connectDB = async (req, res, next) => {
     try {
-        mongoose.connect("mongodb://localhost:27017/sara7a", {
+        mongoose.connect(DB_URL, {
             serverSelectionTimeoutMS: 5000,
         });
         console.log("DB connected successfully");

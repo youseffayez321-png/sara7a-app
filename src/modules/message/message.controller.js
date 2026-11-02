@@ -1,12 +1,12 @@
 import { Router } from "express";
-import * as US from "./message.service.js";
+import * as MS from "./message.service.js";
 import { authentication } from "../../common/middleware/authentication.js";
 import { validation } from "../../common/middleware/validation.js";
 import * as MV from "./message.validation.js";
 import { multerLocal } from "../../common/middleware/multer.js";
 import { multer_enum } from "../../common/enum/user.enum.js";
 
-const messageRouter = Router();
+const messageRouter = Router({ caseSensitive: true, strict: true });
 
 messageRouter.post(
     "/create",
@@ -15,6 +15,9 @@ messageRouter.post(
         customTypes: multer_enum.imgaes,
     }).array("attachments"),
     validation(MV.createMessageSchema),
-    US.createMessage,
+    MS.createMessage,
 );
+messageRouter.get("/", authentication, MS.getAllMessages);
+messageRouter.get("/:id", authentication, MS.getMessageById);
+
 export default messageRouter;

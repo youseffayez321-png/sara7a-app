@@ -13,3 +13,11 @@ export const findByIdAndUpdate = async ({ model, id, update,options = {} }) => {
 export const findOneAndUpdate = async ({ model, filter, update,options = {} }) => {
     return await model.findOneAndUpdate( filter, update, {new:true,runValidatiors:true, ...options})
 };
+export const find=async({model,filter,options={}})=>{
+    const data = model.find(filter)
+    if(options?.limit) data.limit(options?.limit)   
+    if(options?.skip) data.skip(options?.skip)   
+    if(options?.sort) data.sort(options?.sort)   
+    if(options?.populate) data.populate(options?.populate)  
+    return data.exec() 
+}

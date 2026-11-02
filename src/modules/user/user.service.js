@@ -8,12 +8,20 @@ import { randomUUID } from "node:crypto";
 import {
     deleteKey,
     getValue,
+    incr,
     setValue,
+    ttl,
 } from "../../DB/service/redis.service.js";
 import { generate_otp, sendEmail } from "../../common/service/sendEmail.js";
 import { eventEmitter } from "../../common/utils/events.js";
 import { sendEmailOtp } from "./user.helper.js";
 import { otpEmailTemplate } from "../../common/utils/email.template.js";
+import {
+    ACCESS_TOKEN_SIGNATURE,
+    AUDIENCE,
+    REFRESH_TOKEN_SIGNATURE,
+} from "../../../config/config.service.js";
+import { success_respons } from "../../common/utils/success.respons.js";
 
 const client = new OAuth2Client();
 
@@ -67,14 +75,21 @@ export const signUp = async (req, res, next) => {
             coverImage: paths,
         },
     });
-    return res.status(201).json({ message: "user created", user });
+    success_respons({
+        res,
+        statusCode: 201,
+        message: "user created",
+        data: user,
+    });
 };
 //======================== resend Otp ==========================
 export const resendOtp = async (req, res, next) => {
     const { email } = req.body;
     await sendEmailOtp({ email, isConfirmed: { $exists: false } });
 
-    return res.status(200).json({ message: "done" });
+    success_respons({
+        res,
+    });
 };
 
 //======================== sign up with gmail ==========================
@@ -82,8 +97,7 @@ export const signUpWithGmail = async (req, res, next) => {
     const { idToken } = req.body;
     const decoded = await client.verifyIdToken({
         idToken,
-        audience:
-            "350975069962-2bae16tbpma6d7f3kh7a2dm7qujqsi6f.apps.googleusercontent.com",
+        audience: AUDIENCE,
     });
     const { picture, family_name, given_name, email_verified, email } =
         decoded.getPayload();
@@ -106,22 +120,29 @@ export const signUpWithGmail = async (req, res, next) => {
     }
     const access_token = jwt.sign(
         { id: user.id, email: user.email },
-        "yousef123",
+        ACCESS_TOKEN_SIGNATURE,
         { expiresIn: 60 * 5 },
     );
-    const refresh_token = jwt.sign({ id: user.id, email: user.email }, "jo123");
-
-    res.status(200).json({
-        message: "done",
-        user,
-        tokens: { access_token, refresh_token },
+    const refresh_token = jwt.sign(
+        { id: user.id, email: user.email },
+        REFRESH_TOKEN_SIGNATURE,
+    );
+    success_respons({
+        res,
+        data: { user, tokens: { access_token, refresh_token } },
     });
 };
 //======================== forget password ==========================
 export const forgetPassword = async (req, res, next) => {
     const { email } = req.body;
-    await sendEmailOtp({ email, isConfirmed: true ,subject:"forget password"});
-    return res.status(200).json({ message: "done" });
+    await sendEmailOtp({
+        email,
+        isConfirmed: true,
+        subject: "forget password",
+    });
+    success_respons({
+        res,
+    });
 };
 //======================== reset password ==========================
 export const resetPassword = async (req, res, next) => {
@@ -141,10 +162,27 @@ export const resetPassword = async (req, res, next) => {
     });
     await deleteKey(`otp::${email}`);
     return res.status(200).json({ message: "done" });
+    success_respons({
+        res,
+    });
 };
 //======================== sign in ==========================
 export const signIn = async (req, res, next) => {
     const { email, password } = req.body;
+    if ((await ttl(`blocked::${email}`)) > 0) {
+        await deleteKey(`attempts::${email}`);
+        throw new Error(
+            `try again later after ${await ttl(`blocked::${email}`)}`,
+        );
+    }
+    if ((await getValue(`attempts::${email}`)) >= 5) {
+        await setValue({
+            key: `blocked::${email}`,
+            value: 1,
+            ttl: 5 * 60,
+        });
+        throw new Error("try again later");
+    }
     const user = await dbService.findOne({
         model: userModel,
         filter: {
@@ -157,30 +195,92 @@ export const signIn = async (req, res, next) => {
         throw new Error("email not exist", { cause: 404 });
     }
     if (!(await Compare(password, user.password))) {
+        await incr(`attempts::${email}`);
         throw new Error("invalid password", { cause: 400 });
     }
+    if (user?.twoStepVerification) {
+        await sendEmailOtp({
+            email,
+            isConfirmed: true,
+            subject: "two step verification",
+        });
+        success_respons({
+            res,
+            message: "otp send to your email",
+        });
+    }
     const tokenId = randomUUID();
+
     const access_token = jwt.sign(
         { id: user.id, email: user.email },
-        "yousef123",
+        ACCESS_TOKEN_SIGNATURE,
         {
             jwtid: tokenId,
-            expiresIn: 60 * 5,
+            expiresIn: "1d",
             audience: "http://localhost:4200",
             issuer: "http://localhost:3000",
         },
     );
     const refresh_token = jwt.sign(
         { id: user.id, email: user.email },
-        "jo123",
+        REFRESH_TOKEN_SIGNATURE,
         {
             jwtid: tokenId,
         },
     );
-    return res.status(200).json({
-        message: "done",
-        user: { ...user._doc, phone: decrypt(user.phone) },
-        tokens: { access_token, refresh_token },
+    success_respons({
+        res,
+        data: {
+            user: { ...user._doc, phone: decrypt(user.phone) },
+            tokens: { access_token, refresh_token },
+        },
+    });
+};
+//======================== sign in with 2SV ==========================
+export const signIn2SV = async (req, res, next) => {
+    const { email, otp } = req.body;
+    const otpValue = await getValue(`otp::${email}`);
+    if (!otpValue) throw new Error("otp expire");
+    if (!(await Compare(otp, otpValue))) {
+        throw new Error("invalid otp");
+    }
+    const user = await dbService.findOne({
+        model: userModel,
+        filter: {
+            email: email.toLowerCase(),
+            provider: "system",
+            isConfirmed: { $exists: true },
+            twoStepVerification: { $exists: true },
+        },
+    });
+    if (!user) {
+        throw new Error("email not exist", { cause: 404 });
+    }
+    const tokenId = randomUUID();
+
+    const access_token = jwt.sign(
+        { id: user.id, email: user.email },
+        ACCESS_TOKEN_SIGNATURE,
+        {
+            jwtid: tokenId,
+            expiresIn: "1d",
+            audience: "http://localhost:4200",
+            issuer: "http://localhost:3000",
+        },
+    );
+    const refresh_token = jwt.sign(
+        { id: user.id, email: user.email },
+        REFRESH_TOKEN_SIGNATURE,
+        {
+            jwtid: tokenId,
+        },
+    );
+    success_respons({
+        res,
+        data: {
+            user: { ...user._doc, phone: decrypt(user.phone) },
+            tokens: { access_token, refresh_token },
+        },
     });
 };
 //======================== confirm Email  ==========================
@@ -209,13 +309,16 @@ export const confirmEmail = async (req, res, next) => {
         });
     }
     await deleteKey(`otp::${email}`);
-    return res.status(200).json({ message: "email confirmed" });
+    success_respons({
+        res,
+        message: "email confirmed",
+    });
 };
 //======================== get profile ==========================
 export const getProfile = async (req, res, next) => {
-    return res.status(200).json({
-        message: "done",
-        user: { ...req.user._doc, phone: decrypt(req.user.phone) },
+    success_respons({
+        res,
+        data: { user: { ...req.user._doc, phone: decrypt(req.user.phone) } },
     });
 };
 
@@ -228,7 +331,7 @@ export const refreshToken = async (req, res, next) => {
         throw Error("token not exist", { cause: 404 });
     }
 
-    const decoded = jwt.verify(authorization, "jo123");
+    const decoded = jwt.verify(authorization, ACCESS_TOKEN_SIGNATURE);
     const user = await dbService.findOne({
         model: userModel,
         filter: { email: decoded.email.toLowerCase() },
@@ -238,16 +341,16 @@ export const refreshToken = async (req, res, next) => {
     }
     const access_token = jwt.sign(
         { id: user.id, email: user.email },
-        "yousef123",
+        ACCESS_TOKEN_SIGNATURE,
         {
             expiresIn: 60 * 5,
             audience: "http://localhost:4200",
             issuer: "http://localhost:3000",
         },
     );
-    return res.status(200).json({
-        message: "done",
-        access_token: access_token,
+    success_respons({
+        res,
+        data: access_token,
     });
 };
 //======================== share profile ==========================
@@ -266,9 +369,10 @@ export const shareProfile = async (req, res, next) => {
     if (!user) {
         throw new Error("user not found", { cause: 404 });
     }
-    res.status(200).json({
+    success_respons({
+        res,
         message: "user found",
-        user: { ...user._doc, phone: decrypt(user.phone) },
+        data: { ...user._doc, phone: decrypt(user.phone) },
     });
 };
 //======================== update profile ==========================
@@ -295,7 +399,25 @@ export const updateProfile = async (req, res, next) => {
         id: req.user._id,
         update: updateQuery,
     });
-    return res.status(200).json({ message: "user created", user });
+    success_respons({
+        res,
+        message: "user created",
+        data: user,
+    });
+};
+//======================== enable 2 step verification ==========================
+export const enable2SV = async (req, res, next) => {
+    if (req.user?.twoStepVerification)
+        throw new Error("you already enabled the 2 step verification");
+    await dbService.findByIdAndUpdate({
+        model: userModel,
+        id: req.decoded.id,
+        update: { twoStepVerification: true },
+    });
+    success_respons({
+        res,
+        message: "2 step verfication enabled",
+    });
 };
 //======================== update password ==========================
 export const updatePassword = async (req, res, next) => {
@@ -307,9 +429,11 @@ export const updatePassword = async (req, res, next) => {
     req.user.changeCredentialAt = new Date();
     await req.user.save();
 
-    return res
-        .status(200)
-        .json({ message: "password updated", user: req.user });
+    success_respons({
+        res,
+        message: "password updated",
+        data: req.user,
+    });
 };
 //======================== logout ==========================
 export const logout = async (req, res, next) => {
@@ -324,6 +448,8 @@ export const logout = async (req, res, next) => {
             value: `${req.decoded.jti}`,
             ttl: req.decoded.exp - Math.floor(Date.now() / 1000),
         });
-        return res.status(200).json({ message: "done" });
+        success_respons({
+            res,
+        });
     }
 };

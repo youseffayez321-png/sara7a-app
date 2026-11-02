@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
-export const Hash = async (plainText, salt_rounds=12) => {
+import { SALT_ROUNDS } from "../../../config/config.service.js";
+export const Hash = async (plainText, salt_rounds=SALT_ROUNDS) => {
     return await bcrypt.hashSync(plainText, salt_rounds);
 };
 

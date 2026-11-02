@@ -1,7 +1,8 @@
 import { createClient } from "redis";
+import { REDIS__URL } from "../../config/config.service.js";
 
 export const redis_client = createClient({
-    url: "rediss://default:gQAAAAAAAotgAAIgcDJhOGIzYjM3MTJlN2Y0ZjI2YjM2ZjYwNThkZDM1ZTY0Mg@trusted-cod-166752.upstash.io:6379",
+    url: REDIS__URL,
 });
 export const connectRedis = async (req, res, next) => {
     try {

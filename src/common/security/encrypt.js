@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-const ENCRYPTION_KEY = Buffer.from("12354654874dsafknjka@#Dffdsajfns");
+import { ENCRYPTION_KEYS } from "../../../config/config.service.js";
+const ENCRYPTION_KEY = Buffer.from(ENCRYPTION_KEYS);
 const IV_LENGTH = 16;
 
 export function Encrypt(plainText) {

@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { findOne } from "../../DB/service/db.service.js";
 import userModel from "../../DB/models/user.model.js";
 import { getValue, ttl } from "../../DB/service/redis.service.js";
+import { ACCESS_TOKEN_SIGNATURE } from "../../../config/config.service.js";
 
 export const authentication = async (req, res, next) => {
     const { authorization } = req.headers;
@@ -9,7 +10,7 @@ export const authentication = async (req, res, next) => {
         throw Error("token not exist", { cause: 404 });
     }
 
-    const decoded = jwt.verify(authorization, "yousef123");
+    const decoded = jwt.verify(authorization, ACCESS_TOKEN_SIGNATURE);
     const user = await findOne({
         model: userModel,
         filter: { email: decoded.email.toLowerCase() },

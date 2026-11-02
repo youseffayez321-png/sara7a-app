@@ -74,3 +74,12 @@ export const resetPasswordSchema = {
         password: generalRules.password.required(),
     }),
 };
+export const signIn2SVSchema     = {
+    body: joi.object({
+        email: generalRules.email.required(),
+        otp: joi
+            .string()
+            .pattern(/^[0-9]{6}$/)
+            .required(),
+    }),
+};

@@ -11,6 +11,7 @@ import {
     resendOtpSchema,
     resetPasswordSchema,
     shareProfileSchema,
+    signIn2SVSchema,
     signInSchema,
     signUpSchema,
     updatePasswordSchema,
@@ -18,7 +19,7 @@ import {
 } from "./user.validation.js";
 import { multerLocal } from "../../common/middleware/multer.js";
 
-const userRouter = Router();
+const userRouter = Router({ caseSensitive: true, strict: true });
 
 userRouter.post(
     "/signUp",
@@ -84,5 +85,7 @@ userRouter.patch(
     validation(resetPasswordSchema),
     US.resetPassword,
 );
+userRouter.patch("/enable-2SV", authentication, US.enable2SV);
+userRouter.post("/signIn-2SV", validation(signIn2SVSchema), US.signIn2SV);
 userRouter.post("/resend-otp", validation(resendOtpSchema), US.resendOtp);
 export default userRouter;
